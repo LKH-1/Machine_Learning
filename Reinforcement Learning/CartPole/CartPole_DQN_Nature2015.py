@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
 import gym
+from gym import wrappers
 import numpy as np
 import random as ran
 
@@ -18,7 +19,7 @@ OUTPUT = env.action_space.n
 
 # 하이퍼파라미터
 LEARNING_LATE = 0.1
-NUM_EPISODE = 2000
+NUM_EPISODE = 1000
 DISCOUNT = 0.99
 
 
@@ -29,10 +30,10 @@ x=tf.placeholder(dtype=tf.float32, shape=(None, INPUT))
 y=tf.placeholder(dtype=tf.float32, shape=(None, OUTPUT))
 
 # Main 네트워크
-W1 = tf.get_variable('W1',shape=[INPUT, 10],initializer=tf.contrib.layers.xavier_initializer())
+W1 = tf.get_variable('W1',shape=[INPUT, 100],initializer=tf.contrib.layers.xavier_initializer())
 # W2 = tf.get_variable('W2',shape=[100,200],initializer=tf.contrib.layers.xavier_initializer())
 # W3 = tf.get_variable('W3',shape=[200,150],initializer=tf.contrib.layers.xavier_initializer())
-W4 = tf.get_variable('W4',shape=[10, OUTPUT],initializer=tf.contrib.layers.xavier_initializer())
+W4 = tf.get_variable('W4',shape=[100, OUTPUT],initializer=tf.contrib.layers.xavier_initializer())
 
 L1=tf.nn.tanh(tf.matmul(x,W1))
 # L2=tf.nn.relu(tf.matmul(L1,W2))
@@ -41,10 +42,10 @@ Q_pre = tf.matmul(L1,W4)
 
 
 # Target 네트워크
-W1_r = tf.get_variable('W1_r',shape=[INPUT, 10])
+W1_r = tf.get_variable('W1_r',shape=[INPUT, 100])
 # W2_r = tf.get_variable('W2_r',shape=[100,200])
 # W3_r = tf.get_variable('W3_r',shape=[200,150])
-W4_r = tf.get_variable('W4_r',shape=[10, OUTPUT])
+W4_r = tf.get_variable('W4_r',shape=[100, OUTPUT])
 
 L1_r=tf.nn.tanh(tf.matmul(x ,W1_r))
 # L2_r=tf.nn.relu(tf.matmul(L1_r,W2_r))
@@ -74,15 +75,15 @@ with tf.Session() as sess:
         s = env.reset()
 
         # e-greedy
-        e = 1. / ((episode/20)+1)
+        e = 1. / ((episode/15)+1)
         rall = 0
         d = False
         count = 0
 
         # 에피소드가 끝나기 전까지 반복
-        while not d and count < 5000:
+        while not d and np.mean(rlist) < 1000:
 
-            env.render()
+            #env.render()
             count += 1
 
             # state 값의 전처리
@@ -151,3 +152,36 @@ with tf.Session() as sess:
         print("Episode {} finished after {} timesteps with r={}. Running score: {}".format(episode, count, rall, np.mean(rlist)))
 
 
+    env = wrappers.Monitor(env, 'tmp/CartPole_DQN_Nature2015',force='True')
+
+    for episode in range(NUM_EPISODE):
+        # state 초기화
+        s = env.reset()
+
+        rall = 0
+        d = False
+        count = 0
+        rlist=[]
+
+        # 에피소드가 끝나기 전까지 반복
+        while not d :
+            env.render()
+            count += 1
+            # state 값의 전처리
+            s_t = np.reshape(s, [1, INPUT])
+
+            # 현재 상태의 Q값을 에측
+            Q = sess.run(Q_pre, feed_dict={x: s_t})
+            a = np.argmax(Q)
+
+            # 결정된 action으로 Environment에 입력
+            s, r, d, _ = env.step(a)
+
+            # 총 reward 합
+            rall += r
+
+
+        rlist.append(rall)
+        print("Episode {} finished after {} timesteps with r={}. Running score: {}".format(episode, count, rall,
+                                                                                           np.mean(rlist)))
+    gym.upload('tmp/CartPole_DQN_Nature2015', api_key='sk_DM3tWuF4SAeK6H33znC7g')
