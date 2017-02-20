@@ -45,11 +45,11 @@ rList=[]
 
 with tf.Session() as sess:
     sess.run(init)
-    for step in range(NUM_EPISODE):
+    for episode in range(NUM_EPISODE):
 
         s = env.reset()
 
-        e = 1. / ((step/50)+10)
+        e = 1. / ((episode/20)+1)
         rall = 0
         d = False
         count=0
@@ -79,30 +79,32 @@ with tf.Session() as sess:
             if len(REPLAY_MEMORY) > 50000:
                 del REPLAY_MEMORY[0]
 
-            # 10 번의 스탭마다 미니배치로 학습
-            if step % 10 == 1 :
-
-                for i in range(MINIBATCH):
-
-                    # 메모리에서 사용할 리플레이를 랜덤하게 가져옴
-                    for sample in ran.sample(REPLAY_MEMORY, REPLAY):
-
-                        s_t_r, a_r, r_r, s1_r ,d_r = sample
-
-                        # DQN 알고리즘으로 학습
-                        if d_r:
-                            Q[0, a_r] = -100
-                        else:
-                            s1_t_r= np.reshape(s1_r,[1,INPUT])
-
-                            Q1 = sess.run(Q_pre, feed_dict={x: s1_t_r})
-
-                            Q[0, a_r] = r_r + DISCOUNT * np.max(Q1)
-
-                        sess.run(train, feed_dict={x: s_t_r, y: Q})
-
             rall += r
             s = s1
+
+        # 10 번의 스탭마다 미니배치로 학습
+        if episode % 10 == 1 :
+
+            for i in range(MINIBATCH):
+
+                # 메모리에서 사용할 리플레이를 랜덤하게 가져옴
+                for sample in ran.sample(REPLAY_MEMORY, REPLAY):
+
+                    s_t_r, a_r, r_r, s1_r ,d_r = sample
+
+                    # DQN 알고리즘으로 학습
+                    if d_r:
+                        Q[0, a_r] = -100
+                    else:
+                        s1_t_r= np.reshape(s1_r,[1,INPUT])
+
+                        Q1 = sess.run(Q_pre, feed_dict={x: s1_t_r})
+
+                        Q[0, a_r] = r_r + DISCOUNT * np.max(Q1)
+
+                    sess.run(train, feed_dict={x: s_t_r, y: Q})
+
+
 
         rList.append(rall)
         print("Episode {} finished after {} timesteps with r={}. Running score: {}".format(step, count, rall, np.mean(rList)))

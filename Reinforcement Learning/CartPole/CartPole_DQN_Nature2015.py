@@ -108,41 +108,43 @@ with tf.Session() as sess:
             if len(REPLAY_MEMORY) > 50000:
                 del REPLAY_MEMORY[0]
 
-            # 10번의 episode마다 학습
-            if episode % 10 == 1:
-
-                # 50번의 미니배치로 학습
-                for i in range(MINIBATCH):
-
-                    # 저장된 리플레이 중에 학습에 사용할 랜덤한 리플레이 샘플들을 가져옴
-                    for sample in ran.sample(REPLAY_MEMORY, REPLAY):
-
-                        s_t_r, a_r, r_r, s1_r, d_r = sample
-
-                        # 꺼내온 리플레이의 state의 Q값을 예측
-                        Q = sess.run(Q_pre, feed_dict={x: s_t_r})
-
-
-                        if d_r:
-                            # 꺼내온 리플레이의 상태가 끝난 상황이라면 Negative Reward를 부여
-                            Q[0, a_r] = -100
-                        else:
-                            # 끝나지 않았다면 Q값을 업데이트
-                            s1_t_r= np.reshape(s1_r,[1,INPUT])
-                            Q1 = sess.run(Q_pre_r, feed_dict={x: s1_t_r})
-                            Q[0, a_r] = r_r + DISCOUNT * np.max(Q1)
-
-                        # 업데이트 된 Q값으로 main네트워크를 학습
-                        sess.run(train, feed_dict={x: s_t_r, y: Q})
-
-                # 10번 마다 target 네트워크에 main 네트워크 값을 copy
-                sess.run(W1_r.assign(W1))
-                sess.run(W4_r.assign(W4))
 
             # 총 reward 합
             rall += r
             # state를 Next_state로 바꿈
             s = s1
+
+
+        # 10번의 episode마다 학습
+        if episode % 10 == 1:
+
+            # 50번의 미니배치로 학습
+            for i in range(MINIBATCH):
+
+                # 저장된 리플레이 중에 학습에 사용할 랜덤한 리플레이 샘플들을 가져옴
+                for sample in ran.sample(REPLAY_MEMORY, REPLAY):
+
+                    s_t_r, a_r, r_r, s1_r, d_r = sample
+
+                    # 꺼내온 리플레이의 state의 Q값을 예측
+                    Q = sess.run(Q_pre, feed_dict={x: s_t_r})
+
+
+                    if d_r:
+                        # 꺼내온 리플레이의 상태가 끝난 상황이라면 Negative Reward를 부여
+                        Q[0, a_r] = -100
+                    else:
+                        # 끝나지 않았다면 Q값을 업데이트
+                        s1_t_r= np.reshape(s1_r,[1,INPUT])
+                        Q1 = sess.run(Q_pre_r, feed_dict={x: s1_t_r})
+                        Q[0, a_r] = r_r + DISCOUNT * np.max(Q1)
+
+                    # 업데이트 된 Q값으로 main네트워크를 학습
+                    sess.run(train, feed_dict={x: s_t_r, y: Q})
+
+            # 10번 마다 target 네트워크에 main 네트워크 값을 copy
+            sess.run(W1_r.assign(W1))
+            sess.run(W4_r.assign(W4))
 
         # 총 reward의 합을 list에 저장
         rlist.append(rall)
