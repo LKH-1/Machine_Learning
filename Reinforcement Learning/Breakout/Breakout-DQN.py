@@ -32,14 +32,17 @@ FINAL_EXPLORATION = 0.01
 
 
 INPUT = env.observation_space.shape
-OUTPUT = env.action_space.n
+OUTPUT = 3
 
 # 하이퍼파라미터
 LEARNING_RATE = 0.00025
 DISCOUNT = 0.99
 e = 1.
 frame = 0
-model_path = "save/Breakout.ckpt"
+model_path = "save/BreakoutNoFrameskip.ckpt"
+
+def cliped_error(x):
+    return tf.where(tf.abs(x) < 1.0 , 0.5 * tf.square(x), tf.abs(x)-0.5)
 
 # input data 전처리
 def pre_proc(X):
@@ -65,22 +68,22 @@ def model(input1, f1, f2, f3, w1, w2):
 X = tf.placeholder("float", [None, 84, 84, 4])
 Y = tf.placeholder("float", [None, OUTPUT])
 # 메인 네트워크 Variable
-f1 = tf.Variable(tf.random_normal([8,8,4,32],stddev= 0.01))
-f2 = tf.Variable(tf.random_normal([4,4,32,64],stddev= 0.01))
-f3= tf.Variable(tf.random_normal([3,3,64,64],stddev= 0.01))
+f1 = tf.get_variable("f1", shape=[8,8,4,32], initializer=tf.contrib.layers.xavier_initializer_conv2d())
+f2 = tf.get_variable("f2", shape=[4,4,32,64], initializer=tf.contrib.layers.xavier_initializer_conv2d())
+f3 = tf.get_variable("f3", shape=[3,3,64,64], initializer=tf.contrib.layers.xavier_initializer_conv2d())
 
-w1 = tf.Variable(tf.random_normal([7*7*64, 512], stddev=0.01))
-w2 = tf.Variable(tf.random_normal([512, OUTPUT], stddev=0.01))
+w1 = tf.get_variable("w1", shape=[7*7*64,512], initializer=tf.contrib.layers.xavier_initializer())
+w2 = tf.get_variable("w2", shape=[512, OUTPUT], initializer=tf.contrib.layers.xavier_initializer())
 
 py_x = model(X, f1, f2, f3 , w1, w2)
 
 # 타겟 네트워크 Variable
-f1_r = tf.Variable(tf.random_normal([8,8,4,32],stddev= 0.01))
-f2_r = tf.Variable(tf.random_normal([4,4,32,64],stddev= 0.01))
-f3_r = tf.Variable(tf.random_normal([3,3,64,64],stddev= 0.01))
+f1_r = tf.get_variable("f1_r", shape=[8,8,4,32], initializer=tf.contrib.layers.xavier_initializer_conv2d())
+f2_r = tf.get_variable("f2_r", shape=[4,4,32,64], initializer=tf.contrib.layers.xavier_initializer_conv2d())
+f3_r = tf.get_variable("f3_r", shape=[3,3,64,64], initializer=tf.contrib.layers.xavier_initializer_conv2d())
 
-w1_r = tf.Variable(tf.random_normal([7*7*64, 512], stddev=0.01))
-w2_r = tf.Variable(tf.random_normal([512, OUTPUT], stddev=0.01))
+w1_r = tf.get_variable("w1_r", shape=[7*7*64,512], initializer=tf.contrib.layers.xavier_initializer())
+w2_r = tf.get_variable("w2_r", shape=[512, OUTPUT], initializer=tf.contrib.layers.xavier_initializer())
 
 py_x_r = model(X, f1_r, f2_r,f3_r, w1_r, w2_r)
 
@@ -93,8 +96,9 @@ epoch = 0
 episode = 0
 
 # Loss function 정의
-cost = tf.reduce_sum(tf.square(Y-py_x))
-optimizer = tf.train.RMSPropOptimizer(LEARNING_RATE, momentum=0.95 , epsilon=0.01)
+error = Y- py_x
+cost = tf.reduce_mean(cliped_error(error))
+optimizer = tf.train.RMSPropOptimizer(LEARNING_RATE,momentum=0.95,epsilon=0.01)
 train = optimizer.minimize(cost)
 
 saver = tf.train.Saver(max_to_keep=None)
@@ -143,16 +147,16 @@ with tf.Session() as sess:
 
             if count % FRAMESKIP == 1: # Frame skip
                 # 현재 state로 Q값을 계산
-                Q = np.reshape(np.float32(history / 255.0), [1, 84, 84, 5])[:, :, :, 0:4]
+                Q = sess.run(py_x, feed_dict = {X : np.reshape(np.float32(history / 255.0), [1, 84, 84, 5])[:, :, :, 0:4]})
                 average_Q.append(np.max(Q))
 
                 if e > np.random.rand(1):
-                    a = env.action_space.sample()
+                    a = np.random.randint(OUTPUT)
                 else:
-                    a = np.argmax(sess.run(py_x, feed_dict = {X : Q}))
+                    a = np.argmax(Q)
 
                 # 결정된 action으로 Environment에 입력
-                s1, r, d, _ = env.step(a)
+                s1, r, d, _ = env.step(a+1)
                 reward += np.clip(r,-1,1)
                 # 마지막 action
                 last_action = a
@@ -189,7 +193,7 @@ with tf.Session() as sess:
                     else:
                         # 끝나지 않았다면 Q값을 업데이트
                         Q1 = sess.run(py_x_r, feed_dict={X: np.reshape(np.float32(s_r[:, :, 1:5] / 255.0), [1, 84, 84, 4])})
-                        Q[0, a_r] = r_r + DISCOUNT * Q1[0, np.argmax(Q)]
+                        Q[0, a_r] = r_r + DISCOUNT * np.max(Q1)
 
                     # 업데이트 된 Q값으로 main네트워크를 학습
                     sess.run(train, feed_dict={X: np.reshape(np.float32(s_r[:, :, 0:4] / 255.0), [1, 84, 84, 4]), Y: Q})
@@ -202,26 +206,30 @@ with tf.Session() as sess:
                     sess.run(f3_r.assign(f3))
 
             # epoch(50000 Trained frame) 마다 plot
-            if (frame - TRAIN_START) % (50000*TRAIN_INTERVAL) == 0:
-                plt.clf()
+            if (frame - TRAIN_START) % 50000 == 0:
+                epoch_on = True
 
-                epoch_score.append(np.mean(recent_rlist))
-                epoch_Q.append(np.mean(average_Q))
+        if epoch_on:
+            plt.clf()
+            epoch += 1
+            epoch_score.append(np.mean(recent_rlist))
+            epoch_Q.append(np.mean(average_Q))
 
-                plt.subplot(211)
-                plt.plot(epoch_Q)
-                plt.axis([0, 50, 0, 4])
-                plt.xlabel('Training Epochs')
-                plt.ylabel('Average Action Value(Q)')
+            plt.subplot(211)
+            plt.axis([0, epoch, 0, np.max(epoch_Q) * 6 / 5])
+            plt.xlabel('Training Epochs')
+            plt.ylabel('Average Action Value(Q)')
+            plt.plot(epoch_Q)
 
-                plt.subplot(212)
-                plt.axis([0, 50, 0, 300])
-                plt.xlabel('Training Epochs')
-                plt.ylabel('Average Reward per Episode')
-                plt.plot(epoch_score, "r")
-                epoch += 1
-                plt.pause(0.05)
-                plt.savefig("graph/{} epoch".format(epoch))
+            plt.subplot(212)
+            plt.axis([0, epoch, 0, np.max(epoch_score) * 6 / 5])
+            plt.xlabel('Training Epochs')
+            plt.ylabel('Average Reward per Episode')
+            plt.plot(epoch_score, "r")
+
+            epoch_on = False
+            plt.pause(0.05)
+            plt.savefig("graph/{} epoch".format(epoch))
 
         # 30만 Frame 마다 모델 저장
         if episode % SAVE_MODEL == 0:
