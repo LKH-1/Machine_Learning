@@ -17,19 +17,12 @@ plt.ion()
 # {}-v3 : repeat_action_probability
 env = gym.make('BreakoutDeterministic-v3')
 
-DDQN = False
-
 # 하이퍼 파라미터
 MINIBATCH_SIZE = 32
 HISTORY_SIZE = 4
 TRAIN_START = 50000
-if DDQN:
-    FINAL_EXPLORATION = 0.01
-    TARGET_UPDATE = 30000
-else:
-    FINAL_EXPLORATION = 0.1
-    TARGET_UPDATE = 10000
-
+FINAL_EXPLORATION = 0.1
+TARGET_UPDATE = 10000
 MEMORY_SIZE = 400000
 EXPLORATION = 1000000
 START_EXPLORATION = 1.
@@ -42,11 +35,9 @@ DISCOUNT = 0.99
 
 model_path = "save/Breakout.ckpt"
 
-
 # 후버 로스
 def cliped_error(x):
     return tf.where(tf.abs(x) < 1.0, 0.5 * tf.square(x), tf.abs(x) - 0.5)
-
 
 # 입력데이터 전처리
 def pre_proc(X):
@@ -103,7 +94,6 @@ def get_terminal(start_live, l, reward, no_life_game, ter):
             start_live = l['ale.lives']
 
     return [ter, start_live]
-
 
 # 미니배치로 트레이닝
 def train_minibatch(mainDQN, targetDQN, minibatch):
@@ -305,6 +295,7 @@ def main():
                         copy_ops = get_copy_var_ops(dest_scope_name="target",
                                                     src_scope_name="main")
                         sess.run(copy_ops)
+                        
                 # 1 epoch(trained 50000 frame)마다 plot
                 if (frame - TRAIN_START) % 50000 == 0:
                     epoch_on = True
