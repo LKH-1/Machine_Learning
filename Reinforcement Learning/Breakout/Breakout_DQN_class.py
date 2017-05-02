@@ -19,9 +19,9 @@ env = gym.make('BreakoutDeterministic-v3')
 
 DDQN = False
 
-# 꺼내서 사용할 리플레이 갯수
-MINIBATCH = 32
-HISTORY_SIZE =4
+# 하이퍼 파라미터
+MINIBATCH_SIZE = 32
+HISTORY_SIZE = 4
 TRAIN_START = 50000
 if DDQN:
     FINAL_EXPLORATION = 0.01
@@ -30,29 +30,34 @@ else:
     FINAL_EXPLORATION = 0.1
     TARGET_UPDATE = 10000
 
-MEMORY_SIZE = 200000
+MEMORY_SIZE = 400000
 EXPLORATION = 1000000
 START_EXPLORATION = 1.
 INPUT = env.observation_space.shape
 OUTPUT = 3
-HEIGHT =84
+HEIGHT = 84
 WIDTH = 84
 LEARNING_RATE = 0.00025
 DISCOUNT = 0.99
 
 model_path = "save/Breakout.ckpt"
 
+
+# 후버 로스
 def cliped_error(x):
-    return tf.where(tf.abs(x) < 1.0 , 0.5 * tf.square(x), tf.abs(x)-0.5)
+    return tf.where(tf.abs(x) < 1.0, 0.5 * tf.square(x), tf.abs(x) - 0.5)
 
 
+# 입력데이터 전처리
 def pre_proc(X):
     # 바로 전 frame과 비교하여 max를 취함으로써 flickering을 제거
     # x = np.maximum(X, X1)
     # 그레이 스케일링과 리사이징을 하여 데이터 크기 수정
-    x = np.uint8(resize(rgb2gray(X), (HEIGHT,WIDTH))*255)
+    x = np.uint8(resize(rgb2gray(X), (HEIGHT, WIDTH), mode='reflect') * 255)
     return x
 
+
+# weight값 동기화
 def get_copy_var_ops(*, dest_scope_name="target", src_scope_name="main"):
     # Copy variables src_scope to dest_scope
     op_holder = []
@@ -67,10 +72,14 @@ def get_copy_var_ops(*, dest_scope_name="target", src_scope_name="main"):
 
     return op_holder
 
+
+# 게임 시작할때 state
 def get_init_state(history, s):
     for i in range(HISTORY_SIZE):
-        history[:,:,i] = pre_proc(s)
+        history[:, :, i] = pre_proc(s)
 
+
+# 라이프가 있는 게임인지 아닌지 판별
 def get_game_type(count, l, no_life_game, start_live):
     if count == 1:
         start_live = l['ale.lives']
@@ -80,12 +89,14 @@ def get_game_type(count, l, no_life_game, start_live):
             no_life_game = False
     return [no_life_game, start_live]
 
-def get_terminal(start_live, l, reward,no_life_game, ter):
+
+# 목숨이 줄어들 때 터미널 처리
+def get_terminal(start_live, l, reward, no_life_game, ter):
     if no_life_game:
         # 목숨이 없는 게임일 경우 Terminal 처리
         if reward < 0:
             ter = True
-    else :
+    else:
         # 목숨 있는 게임일 경우 Terminal 처리
         if start_live > l['ale.lives']:
             ter = True
@@ -93,13 +104,14 @@ def get_terminal(start_live, l, reward,no_life_game, ter):
 
     return [ter, start_live]
 
+
+# 미니배치로 트레이닝
 def train_minibatch(mainDQN, targetDQN, minibatch):
     s_stack = []
     a_stack = []
     r_stack = []
     s1_stack = []
     d_stack = []
-    y_stack = []
 
     for s_r, a_r, r_r, d_r in minibatch:
         s_stack.append(s_r[:, :, :4])
@@ -109,17 +121,19 @@ def train_minibatch(mainDQN, targetDQN, minibatch):
         d_stack.append(d_r)
 
     d_stack = np.array(d_stack) + 0
-    y = mainDQN.get_q(np.array(s_stack))
+
     Q1 = targetDQN.get_q(np.array(s1_stack))
-    for i in range(MINIBATCH):
-        y[i, a_stack[i]] = r_stack[i] + (1 - d_stack[i]) * DISCOUNT * np.max(Q1[i])
+
+    y = r_stack + (1 - d_stack) * DISCOUNT * np.max(Q1, axis=1)
 
     # 업데이트 된 Q값으로 main네트워크를 학습
-    mainDQN.sess.run(mainDQN.train, feed_dict={mainDQN.X: np.float32(np.array(s_stack) / 255.), mainDQN.Y: y})
+    mainDQN.sess.run(mainDQN.train, feed_dict={mainDQN.X: np.float32(np.array(s_stack) / 255.), mainDQN.Y: y,
+                                               mainDQN.a: a_stack})
 
+
+# 데이터 플롯
 def plot_data(epoch, epoch_score, average_reward, epoch_Q, average_Q, mainDQN):
     plt.clf()
-    epoch += 1
     epoch_score.append(np.mean(average_reward))
     epoch_Q.append(np.mean(average_Q))
 
@@ -141,6 +155,8 @@ def plot_data(epoch, epoch_score, average_reward, epoch_Q, average_Q, mainDQN):
     save_path = mainDQN.saver.save(mainDQN.sess, model_path, global_step=(epoch - 1))
     print("Model(epoch :", epoch, ") saved in file: ", save_path, " Now time : ", datetime.datetime.now())
 
+
+# DQN
 class DQNAgent:
     def __init__(self, sess, HEIGHT, WIDTH, HISTORY_SIZE, OUTPUT, NAME='main'):
         self.sess = sess
@@ -152,10 +168,11 @@ class DQNAgent:
         self.e = 1.0
         self.build_network()
 
-    def build_network(self, LEARNING_RATE = 0.00025, MOMENTUM = 0.95, EPSILON = 0.01):
+    def build_network(self, LEARNING_RATE=0.00025, MOMENTUM=0.95, EPSILON=0.01):
         with tf.variable_scope(self.name):
             self.X = tf.placeholder('float', [None, self.height, self.width, self.history_size])
-            self.Y = tf.placeholder('float', [None, self.output])
+            self.Y = tf.placeholder('float', [None])
+            self.a = tf.placeholder('int64', [None])
 
             f1 = tf.get_variable("f1", shape=[8, 8, 4, 32], initializer=tf.contrib.layers.xavier_initializer_conv2d())
             f2 = tf.get_variable("f2", shape=[4, 4, 32, 64], initializer=tf.contrib.layers.xavier_initializer_conv2d())
@@ -170,9 +187,16 @@ class DQNAgent:
             l1 = tf.reshape(c3, [-1, w1.get_shape().as_list()[0]])
             l2 = tf.nn.relu(tf.matmul(l1, w1))
 
-        self.Q_pre = tf.matmul(l2, w2)
-        self.error = self.Y - self.Q_pre
-        self.loss = tf.reduce_mean(cliped_error(self.error))
+            self.Q_pre = tf.matmul(l2, w2)
+
+        a_one_hot = tf.one_hot(self.a, self.output, 1.0, 0.0)
+        q_val = tf.reduce_sum(tf.multiply(self.Q_pre, a_one_hot), reduction_indices=1)
+
+        # error를 -1~1 사이로 클립
+        error = cliped_error(self.Y - q_val)
+
+        self.loss = tf.reduce_mean(error)
+
         optimizer = tf.train.RMSPropOptimizer(LEARNING_RATE, momentum=MOMENTUM, epsilon=EPSILON)
         self.train = optimizer.minimize(self.loss)
 
@@ -180,7 +204,8 @@ class DQNAgent:
 
     def get_q(self, history):
         return self.sess.run(self.Q_pre, feed_dict={self.X: np.reshape(np.float32(history / 255.),
-                                                                [-1, 84, 84, 4])})
+                                                                       [-1, 84, 84, 4])})
+
     def get_action(self, q, e):
         if e > np.random.rand(1):
             action = np.random.randint(self.output)
@@ -188,10 +213,11 @@ class DQNAgent:
             action = np.argmax(q)
         return action
 
+
 def main():
     with tf.Session() as sess:
         mainDQN = DQNAgent(sess, HEIGHT, WIDTH, HISTORY_SIZE, OUTPUT, NAME='main')
-        targetDQN = DQNAgent(sess, HEIGHT, WIDTH, HISTORY_SIZE, OUTPUT, NAME = 'target')
+        targetDQN = DQNAgent(sess, HEIGHT, WIDTH, HISTORY_SIZE, OUTPUT, NAME='target')
 
         sess.run(tf.global_variables_initializer())
 
@@ -203,21 +229,21 @@ def main():
         rlist = [0]
         recent_rlist = deque(maxlen=100)
         e = 1.
-        episode, epoch, frame = 0,0,0
+        episode, epoch, frame = 0, 0, 0
 
-        epoch_score, epoch_Q = deque(),deque()
-        average_Q, average_reward = deque(),deque()
+        epoch_score, epoch_Q = deque(), deque()
+        average_Q, average_reward = deque(), deque()
 
         epoch_on = False
         no_life_game = False
-        REPLAY_MEMORY = deque(maxlen=200000)
+        replay_memory = deque(maxlen=MEMORY_SIZE)
 
         # Train agent during 200 epoch
         while epoch <= 200:
             episode += 1
 
             history = np.zeros([84, 84, 5], dtype=np.uint8)
-            rall, count = 0,0
+            rall, count = 0, 0
             d = False
             ter = False
             start_lives = 0
@@ -226,20 +252,23 @@ def main():
             get_init_state(history, s)
 
             while not d:
-                #env.render()
+                # env.render()
 
                 frame += 1
                 count += 1
 
+                # e-greedy
                 if e > FINAL_EXPLORATION and frame > TRAIN_START:
                     e -= (START_EXPLORATION - FINAL_EXPLORATION) / EXPLORATION
 
-                Q = mainDQN.get_q(history[:,:,:4])
+                # 히스토리의 0~4까지 부분으로 Q값 예측
+                Q = mainDQN.get_q(history[:, :, :4])
                 average_Q.append(np.max(Q))
 
-                action = mainDQN.get_action(Q,e)
+                # 액션 선택
+                action = mainDQN.get_action(Q, e)
 
-                # 액션 개수 줄임
+                # 액션 개수 줄임(for Breakout)
                 if action == 0:
                     real_a = 1
                 elif action == 1:
@@ -252,27 +281,31 @@ def main():
                 ter = d
                 reward = np.clip(r, -1, 1)
 
-                no_life_game,start_lives= get_game_type(count, l,no_life_game,start_lives)
-                ter, start_lives = get_terminal(start_lives,l,reward,no_life_game, ter)
+                # 라이프가 있는 게임인지 아닌지 판별하고 라이프가 있는 게임일 경우 목숨이 줄을 때 마다 terminal로 처리
+                no_life_game, start_lives = get_game_type(count, l, no_life_game, start_lives)
+                ter, start_lives = get_terminal(start_lives, l, reward, no_life_game, ter)
 
-                history[:,:,4] = pre_proc(s1)
+                # 새로운 프레임을 히스토리 마지막에 넣어줌
+                history[:, :, 4] = pre_proc(s1)
 
                 # 메모리 저장 효율을 높이기 위해 5개의 프레임을 가진 히스토리를 저장
                 # state와 next_state는 3개의 데이터가 겹침을 이용.
-                REPLAY_MEMORY.append((np.copy(history[:,:,:]), action, reward , ter))
-                history[:,:,:4] = history[:,:,1:]
+                replay_memory.append((np.copy(history[:, :, :]), action, reward, ter))
+                history[:, :, :4] = history[:, :, 1:]
 
                 rall += r
 
-                if frame > TRAIN_START :
-                    minibatch = ran.sample(REPLAY_MEMORY, MINIBATCH)
+                if frame > TRAIN_START:
+                    # 프레임 스킵때마다 학습
+                    minibatch = ran.sample(replay_memory, MINIBATCH_SIZE)
                     train_minibatch(mainDQN, targetDQN, minibatch)
 
+                    # 1만 프레임일때마다 target_net 업데이트
                     if frame % TARGET_UPDATE == 0:
                         copy_ops = get_copy_var_ops(dest_scope_name="target",
                                                     src_scope_name="main")
                         sess.run(copy_ops)
-
+                # 1 epoch(trained 50000 frame)마다 plot
                 if (frame - TRAIN_START) % 50000 == 0:
                     epoch_on = True
 
@@ -286,15 +319,15 @@ def main():
                                                                         np.mean(recent_rlist)))
 
             if epoch_on:
+                epoch += 1
                 plot_data(epoch, epoch_score, average_reward, epoch_Q, average_Q, mainDQN)
                 epoch_on = False
                 average_reward = deque()
                 average_Q = deque()
 
+
 if __name__ == "__main__":
     main()
-
-
 
 
 
