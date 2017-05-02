@@ -285,4 +285,3 @@ with tf.Session() as sess:
         average_reward.append(rall)
         print("Episode:{0:6d} | Frames:{1:9d} | Steps:{2:5d} | Reward:{3:3.0f} | e-greedy:{4:.5f} | Avg_Max_Q:{5:2.5f} | "
               "Recent reward:{6:.5f}  ".format(episode,frame, count, rall, e, avg_max_Q/float(count),np.mean(recent_rlist)))
-
