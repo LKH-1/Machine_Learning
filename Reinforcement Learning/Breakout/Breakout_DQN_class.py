@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 김성훈 교수님 ( https://github.com/hunkim/ReinforcementZeroToAll/blob/master/07_3_dqn_2015_cartpole.py )
+# 김성훈님  ( https://github.com/hunkim/ReinforcementZeroToAll/blob/master/07_3_dqn_2015_cartpole.py )
 # 김태훈님 ( https://github.com/devsisters/DQN-tensorflow )
 # 코드를 참조했습니다. 감사합니다!
 #
@@ -17,8 +17,10 @@ from skimage.color import rgb2gray
 
 plt.ion()
 # DQN paper setting(frameskip = 4, repeat_action_probability = 0)
+# {} : frameskip = random skip between 2 ~ 5 frame
 # {}Deterministic : frameskip = 4
-# {}-v3 : repeat_action_probability
+# {}-v0 : repeat_action_prebability = 0.25
+# {}-v3 : repeat_action_probability = 0
 env = gym.make('BreakoutDeterministic-v3')
 
 # 하이퍼 파라미터
