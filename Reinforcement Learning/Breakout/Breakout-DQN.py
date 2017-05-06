@@ -14,39 +14,25 @@ from skimage.color import rgb2gray
 plt.ion()
 env = gym.make('BreakoutDeterministic-v3')
 
-DDQN = False
-
 # 꺼내서 사용할 리플레이 갯수
 MINIBATCH = 32
-# 리플레이를 저장할 리스트
 REPLAY_MEMORY = deque()
-
 HISTORY_STEP =4
 FRAMESKIP = 4
 TRAIN_INTERVAL = 4
 NO_STEP = 30
 TRAIN_START = 50000
-if DDQN:
-    FINAL_EXPLORATION = 0.01
-    TARGET_UPDATE = 30000
-else:
-    FINAL_EXPLORATION = 0.1
-    TARGET_UPDATE = 10000
-
-
+FINAL_EXPLORATION = 0.1
+TARGET_UPDATE = 10000
 MEMORY_SIZE = 200000
 EXPLORATION = 1000000
 START_EXPLORATION = 1.
 
-
 INPUT = env.observation_space.shape
 OUTPUT = 3
-HEIGHT =84
+HEIGHT = 84
 WIDTH = 84
-
-# 하이퍼파라미터
 LEARNING_RATE = 0.00025
-
 DISCOUNT = 0.99
 e = 1.
 frame = 0
@@ -55,8 +41,6 @@ def cliped_error(x):
     return tf.where(tf.abs(x) < 1.0 , 0.5 * tf.square(x), tf.abs(x)-0.5)
 
 # input data 전처리
-
-
 def pre_proc(X):
     # 바로 전 frame과 비교하여 max를 취함으로써 flickering을 제거
     # x = np.maximum(X, X1)
@@ -117,11 +101,8 @@ a= tf.placeholder(tf.int64, [None])
 y = tf.placeholder(tf.float32, [None])
 a_one_hot = tf.one_hot(a, OUTPUT, 1.0, 0.0)
 q_value = tf.reduce_sum(tf.multiply(py_x, a_one_hot), reduction_indices=1)
-error = tf.abs(y - q_value)
-
-quadratic_part = tf.clip_by_value(error, 0.0, 1.0)
-linear_part = error - quadratic_part
-loss = tf.reduce_mean(0.5 * tf.square(quadratic_part) + linear_part)
+error = y - q_value
+loss = tf.reduce_mean(cliped_error(error))
 
 optimizer = tf.train.RMSPropOptimizer(LEARNING_RATE,momentum=0.95,epsilon= 0.01)
 train = optimizer.minimize(loss)
